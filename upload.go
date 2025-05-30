@@ -3,35 +3,42 @@ package ginupload
 import (
 	"fmt"
 	"io"
+	"mime/multipart"
 	"os"
 	"path/filepath"
 
 	"github.com/flytam/filenamify"
 	"github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin/binding"
 )
 
-type uploadForm struct {
-	filename   string
-	chunkIndex uint64
-	chunks     uint64
+type UploadForm struct {
+	Filename   string                `form:"filename"`
+	ChunkIndex uint64                `form:"chunk_index"`
+	Chunks     uint64                `form:"chunks"`
+	File       *multipart.FileHeader `form:"file"`
 }
 
 func UploadHandler(uploadDir string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var form uploadForm
-		c.Bind(&form)
+		var form UploadForm
+		if err := c.ShouldBindWith(&form, binding.FormMultipart); err != nil {
+			fmt.Println(err.Error())
+		}
 
-		form.filename, _ = filenamify.Filenamify(form.filename, filenamify.Options{})
-		if form.filename == "" {
+		fmt.Println(form.Filename)
+		form.Filename, _ = filenamify.Filenamify(form.Filename, filenamify.Options{})
+		fmt.Println(form.Filename)
+		if form.Filename == "" {
 			c.AbortWithStatusJSON(400, gin.H{
 				"error": "filename is required",
 			})
 			return
 		}
 
-		file, _ := c.FormFile("file")
+		file := form.File
 		// Assign a unique filename for each chunk.
-		partFileName := fmt.Sprintf("%s.%d.part", form.filename, form.chunkIndex)
+		partFileName := fmt.Sprintf("%s.%d.part", form.Filename, form.ChunkIndex)
 		partFilePath := filepath.Join(uploadDir, partFileName)
 
 		// Save the uploaded chunk file.
@@ -41,14 +48,14 @@ func UploadHandler(uploadDir string) gin.HandlerFunc {
 		}
 
 		// Merge all chunks if this is the last chunk.
-		if form.chunkIndex == form.chunks-1 {
-			mergeChunks(uploadDir, form.filename, form.chunks)
+		if form.ChunkIndex == form.Chunks-1 {
+			mergeChunks(uploadDir, form.Filename, form.Chunks)
 		}
 
 		c.JSON(200, gin.H{
 			"message":    "Chunk uploaded successfully",
-			"chunkIndex": form.chunkIndex,
-			"chunks":     form.chunks,
+			"chunkIndex": form.ChunkIndex,
+			"chunks":     form.Chunks,
 		})
 	}
 }
